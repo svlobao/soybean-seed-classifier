@@ -237,8 +237,8 @@ def trainModel(train_generator, val_generator):
     return model
 
 
-def evaluateModel(model, generator_list):
-    test_loss, test_accuracy = model.evaluate(generator_list[2])
+def evaluateModel(model, test_generator):
+    test_loss, test_accuracy = model.evaluate(test_generator)
 
     return [test_loss, test_accuracy]
 
@@ -272,4 +272,4 @@ if __name__ == "__main__":
 
     model = trainModel(generator_list[0], generator_list[1])
 
-    # test_loss, test_accuracy = evaluateModel(model, generator_list)
+    test_loss, test_accuracy = evaluateModel(model, generator_list[2])
