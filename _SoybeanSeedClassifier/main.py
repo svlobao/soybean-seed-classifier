@@ -1,6 +1,8 @@
 import os
 import cv2
 import random
+import numpy as np
+import tensorflow as tf
 
 from enum import Enum
 from sklearn.model_selection import train_test_split
@@ -18,6 +20,12 @@ class Classes(Enum):
     INTACT = "intact"
     SKIN_DAMAGED = "skin-damaged"
     SPOTTED = "spotted"
+
+
+class ImageShape(Enum):
+    WIDTH = 227  # columns
+    HEIGHT = 227  # lines
+    CHANNELS = 3
 
 
 def loadImageFiles(img_dirs: dict[str, str]) -> dict[str, list[str]]:
@@ -86,16 +94,90 @@ def splitDatasets(sample_dict: dict[str, list[str]]) -> dict[str, list[str]]:
             random_state=2502,
         )
 
-        aux_key: str = key
-        aux_value: list[str] = [train_files, val_files, test_files]
-
-        all_classes_split[aux_key] = aux_value
+        all_classes_split[key] = [train_files, val_files, test_files]
 
     return all_classes_split
 
 
-def preProcess():
-    return
+def checkImageShapes(samples: dict[str, list[str]]) -> list:
+    image_shapes_dict = {}
+    in_class_shape_consistency = {}
+    out_of_class_shape_sample = []
+
+    for key, value in samples.items():
+        image_shapes_dict[key] = [np.shape(cv2.imread(element)) for element in value]
+
+        in_class_shape_consistency[key] = all(
+            element == image_shapes_dict[key][0] for element in image_shapes_dict[key]
+        )
+
+        out_of_class_shape_sample.append(image_shapes_dict[key][0])
+
+    out_of_class_shape_consistency = all(
+        element == out_of_class_shape_sample[0] for element in out_of_class_shape_sample
+    )
+
+    return [
+        image_shapes_dict,
+        in_class_shape_consistency,
+        out_of_class_shape_consistency,
+    ]
+
+
+def preProcess(split_sample: dict) -> list:
+    train = []
+    label_train = []
+    for key, value in split_sample.items():
+        for element in value[0]:
+            train.append(element)
+            label_train.append(key)
+    aux = list(zip(train, label_train))
+    aux = random.sample(aux, len(aux))
+    train, label_train = zip(*aux)
+
+    val = []
+    label_val = []
+    for key, value in split_sample.items():
+        for element in value[0]:
+            val.append(element)
+            label_val.append(key)
+    aux = list(zip(val, label_val))
+    aux = random.sample(aux, len(aux))
+    val, label_val = zip(*aux)
+
+    test = []
+    label_test = []
+    for key, value in split_sample.items():
+        for element in value[0]:
+            test.append(element)
+            label_test.append(key)
+    aux = list(zip(test, label_test))
+    aux = random.sample(aux, len(aux))
+    test, label_test = zip(*aux)
+
+    image_data_generator = (
+        tf.keras.preprocessing.image.ImageDataGenerator()
+    )  # chose not to preprocess yet
+
+    train_generator = image_data_generator.flow(
+        x=train,
+        y=label_train,
+        batch_size=20,
+    )
+
+    val_generator = image_data_generator.flow(
+        x=val,
+        y=label_val,
+        batch_size=5,
+    )
+
+    test_generator = image_data_generator.flow(
+        x=test,
+        y=label_test,
+        batch_size=5,
+    )
+
+    return [train_generator, val_generator, test_generator]
 
 
 def featureExtraction():
@@ -121,3 +203,10 @@ if __name__ == "__main__":
 
     samples = loadImageFiles(class_file_paths)
     split_classes = splitDatasets(samples)
+    (
+        image_shapes,
+        in_class_shape_consistency,
+        out_of_class_shape_consistency,
+    ) = checkImageShapes(samples)
+
+    preProcess(split_sample=split_classes)
