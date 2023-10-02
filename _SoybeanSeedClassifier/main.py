@@ -124,13 +124,20 @@ def checkImageShapes(samples: dict[str, list[str]]) -> list:
     ]
 
 
-def preProcess(split_sample: dict) -> list:
+def preProcess(split_sample: dict, encoding: dict) -> list:
     train = []
     label_train = []
     for key, value in split_sample.items():
         for element in value[0]:
-            train.append(element)
+            train.append(cv2.imread(element))
             label_train.append(key)
+
+    # One hot encode labels
+    for key, value in encoding.items():
+        for i in range(len(label_train)):
+            if label_train[i] == key:
+                label_train[i] = value
+
     aux = list(zip(train, label_train))
     aux = random.sample(aux, len(aux))
     train, label_train = zip(*aux)
@@ -139,8 +146,15 @@ def preProcess(split_sample: dict) -> list:
     label_val = []
     for key, value in split_sample.items():
         for element in value[0]:
-            val.append(element)
+            val.append(cv2.imread(element))
             label_val.append(key)
+
+    # One hot encode labels
+    for key, value in encoding.items():
+        for i in range(len(label_val)):
+            if label_val[i] == key:
+                label_val[i] = value
+
     aux = list(zip(val, label_val))
     aux = random.sample(aux, len(aux))
     val, label_val = zip(*aux)
@@ -149,8 +163,15 @@ def preProcess(split_sample: dict) -> list:
     label_test = []
     for key, value in split_sample.items():
         for element in value[0]:
-            test.append(element)
+            test.append(cv2.imread(element))
             label_test.append(key)
+
+    # One hot encode labels
+    for key, value in encoding.items():
+        for i in range(len(label_test)):
+            if label_test[i] == key:
+                label_test[i] = value
+
     aux = list(zip(test, label_test))
     aux = random.sample(aux, len(aux))
     test, label_test = zip(*aux)
@@ -160,36 +181,66 @@ def preProcess(split_sample: dict) -> list:
     )  # chose not to preprocess yet
 
     train_generator = image_data_generator.flow(
-        x=train,
-        y=label_train,
+        x=np.array(train),
+        y=np.array(label_train),
         batch_size=20,
     )
 
     val_generator = image_data_generator.flow(
-        x=val,
-        y=label_val,
+        x=np.array(val),
+        y=np.array(label_val),
         batch_size=5,
     )
 
     test_generator = image_data_generator.flow(
-        x=test,
-        y=label_test,
+        x=np.array(test),
+        y=np.array(label_test),
         batch_size=5,
     )
 
     return [train_generator, val_generator, test_generator]
 
 
-def featureExtraction():
-    return
+def trainModel(train_generator, val_generator):
+    # Define model
+    model = tf.keras.Sequential(
+        [
+            tf.keras.layers.Conv2D(
+                filters=64,
+                kernel_size=(3, 3),
+                activation="relu",
+                input_shape=(
+                    227,
+                    227,
+                    3,
+                ),  # could not use enum because it has no __index__ attribute
+            ),
+            tf.keras.layers.MaxPool2D((2, 2)),
+            tf.keras.layers.Flatten(),
+            tf.keras.layers.Dense(
+                128, activation="relu"
+            ),  # vary into other architectures
+            tf.keras.layers.Dense(5, activation="softmax"),
+        ]
+    )
+
+    # Compile model
+    model.compile(
+        optimizer="adam",
+        loss="categorical_crossentropy",
+        metrics=["accuracy"],
+    )
+
+    # Train model
+    model.fit(train_generator, validation_data=val_generator, epochs=50)
+
+    return model
 
 
-def trainModel():
-    return
+def evaluateModel(model, generator_list):
+    test_loss, test_accuracy = model.evaluate(generator_list[2])
 
-
-def evaluateModel():
-    return
+    return [test_loss, test_accuracy]
 
 
 if __name__ == "__main__":
@@ -201,6 +252,14 @@ if __name__ == "__main__":
         Classes.SPOTTED.value: r"/Users/sandrolobao/Desktop/Projects/Personal Projects/Computer Vision/Soybean Seeds/Spotted soybeans",
     }
 
+    encoding = {
+        Classes.BROKEN.value: [1, 0, 0, 0, 0],
+        Classes.IMMATURE.value: [0, 1, 0, 0, 0],
+        Classes.INTACT.value: [0, 0, 1, 0, 0],
+        Classes.SKIN_DAMAGED.value: [0, 0, 0, 1, 0],
+        Classes.SPOTTED.value: [0, 0, 0, 0, 1],
+    }
+
     samples = loadImageFiles(class_file_paths)
     split_classes = splitDatasets(samples)
     (
@@ -209,4 +268,8 @@ if __name__ == "__main__":
         out_of_class_shape_consistency,
     ) = checkImageShapes(samples)
 
-    preProcess(split_sample=split_classes)
+    generator_list = preProcess(split_sample=split_classes, encoding=encoding)
+
+    model = trainModel(generator_list[0], generator_list[1])
+
+    # test_loss, test_accuracy = evaluateModel(model, generator_list)
